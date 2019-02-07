@@ -30,10 +30,12 @@ If (-NOT ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
     Write-Host "Running in Admin Mode..."
 }
 
+# used for setting up app pool
+$Password = Read-Host -AsSecureString "Please enter your Windows Password"
 
 # get Path
-$Path = Get-Location
-$Path = Join-Path $Path $GitFolder
+$RootPath = Get-Location
+$Path = Join-Path $RootPath $GitFolder
 Write-Host "Solution Path: $Path"
 
 
@@ -52,17 +54,16 @@ if (Test-Path -Path $Path) {
     }
 }
 
-# used for setting up app pool
-#$Password = Read-Host -AsSecureString "Please enter your Windows Password"
-
 
 # git
 if ($CloneRepo -eq $true) {
     Write-Host "Cloning remote repository locally."
     git clone $GitRepo $GitFolder 2>$null
+    Set-Location -Path $Path
 
-    if ([string]::IsNullOrEmpty($GitBranch)) {
-        git checkout -b $GitBranch origin/$GitBranch
+    if (![string]::IsNullOrEmpty($GitBranch)) {
+        Write-Host "Checking out '$GitBranch' locally"        
+        git checkout -b $GitBranch origin/$GitBranch 2>$null
     }
 }
 
@@ -135,11 +136,10 @@ Start-WebSite -Name $SiteName
 
 
 # build
-Set-Path $Path
 npm install
-dotnet retsore
+dotnet restore
 dotnet build
 
 
 # open in chrome
-Start-Process "chrome.exe" $SiteHostname
+Start-Process "chrome.exe" "https://$SiteHostname"
