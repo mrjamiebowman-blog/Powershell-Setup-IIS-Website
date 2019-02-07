@@ -7,9 +7,13 @@ $GitBranch = "develop"
 
 # variables: iis
 $SiteName = "SampleDotNet"
+$IisWebsiteFolder = "SampleDotNet"
 $SiteHostname = "localhost.sampledotnet.com"
 $Username = $env:UserName
 $WildcardSsl = "*.sampledotnet.com"
+
+# msbuild
+$SolutionFile = "SampleDotNet.sln"
 
 
 Write-Host "*************************************************"
@@ -129,16 +133,22 @@ New-WebAppPool $SiteName
 Set-ItemProperty IIS:\AppPools\$SiteName -name processModel -value @{userName=$Username; password=$password; identitytype=3}
 
 # iis: set up website
-New-WebSite -Name $SiteName -PhysicalPath $Path -ApplicationPool $SiteName -Force
+New-WebSite -Name $SiteName -PhysicalPath $Path\$IisWebsiteFolder -ApplicationPool $SiteName -Force
 $IISSite = "IIS:\Sites\$SiteName"
 Set-ItemProperty $IISSite -name  Bindings -value @{protocol="https";bindingInformation="*:443:$SiteHostname"}
 Start-WebSite -Name $SiteName
 
 
 # build
-npm install
-dotnet restore
-dotnet build
+if (Test-Path "$path\package.json") {
+    Write-Host "package.json file found... running npm install.."
+    npm install
+}
+
+# msbuild
+Install-Module -Name Invoke-MsBuild 
+
+Invoke-MSBuild "$SolutionFile"
 
 
 # open in chrome
