@@ -37,7 +37,7 @@ If (-NOT ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
 Write-Host "Collecting Information..." -ForegroundColor Green
 
 # used for setting up app pool
-$Password = Read-Host -AsSecureString "Please enter your Windows Password for the Application Pool Identity"
+$creds = Get-Credential
 
 # get Path
 $RootPath = Get-Location
@@ -119,9 +119,9 @@ Write-Host "Inspecting host file..."
 $obj = New-Object PSObject
 $obj | Add-Member Noteproperty -name "IP" -Value "127.0.0.1"
 $obj | Add-Member Noteproperty -name "Hostname" -Value $SiteHostname    
-Write-Host $obj
+Write-Host ($obj | Format-Table | Out-String)
 $obj.IP = "::1"
-Write-Host $obj
+Write-Host ($obj | Format-Table | Out-String)
 
 # hosts file: entries
 if ($FoundHostEntry1 -eq $true -and $FoundHostEntry2 -eq $true) {    
@@ -169,8 +169,9 @@ if(Test-Path IIS:\AppPools\$SiteName)
 }
 
 if ($CreateAppPool -eq $true) {
+    Write-Host "Creating App Pool with Identity"
     New-WebAppPool $SiteName
-    Set-ItemProperty IIS:\AppPools\$SiteName -name processModel -value @{userName=$Username; password=$password; identitytype=3}
+    Set-ItemProperty IIS:\AppPools\$SiteName -name processModel -value @{userName=$($creds.UserName); password=$($creds.GetNetworkCredential().Password); identitytype=3}
 }
 
 # iis: set up website
@@ -195,6 +196,11 @@ if ($CreateWebsite -eq $true) {
     Set-ItemProperty $IISSite -name  Bindings -value @{protocol="https";bindingInformation="*:443:$SiteHostname"}
     Start-WebSite -Name $SiteName
 }
+
+# restart app pool
+Write-Host "Restarting app pool..."
+
+Restart-WebAppPool -Name $SiteName
 
 
 # build website
