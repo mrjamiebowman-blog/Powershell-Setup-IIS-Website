@@ -174,7 +174,7 @@ if ($cert -ne $null) {
     Write-Host "Found Cert: CN=*.sampledotnet.com"
 } else {
     # generate new ssl
-    $cert = New-SelfSignedCertificate -FriendlyName "localhost ($SiteHostname)" -DnsName $SiteHostname -CertStoreLocation cert:\LocalMachine\My
+    $cert = New-SelfSignedCertificate -FriendlyName "localhost ($WildcardSsl)" -DnsName $WildcardSsl -CertStoreLocation cert:\LocalMachine\My
 
     # copy cert into root    
     $srcStoreScope = "LocalMachine"
@@ -183,7 +183,7 @@ if ($cert -ne $null) {
     $srcStore = New-Object System.Security.Cryptography.X509Certificates.X509Store $srcStoreName, $srcStoreScope
     $srcStore.Open([System.Security.Cryptography.X509Certificates.OpenFlags]::ReadOnly)
 
-    $cert = $srcStore.certificates -match $SiteHostname
+    $cert = $srcStore.certificates -match $WildcardSsl
 
     $dstStoreScope = "LocalMachine"
     $dstStoreName = "root"
