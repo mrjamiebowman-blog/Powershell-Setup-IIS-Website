@@ -1,5 +1,8 @@
 ﻿clear
 
+# make sure this runs in this location
+Set-Location -Path $PSScriptRoot
+
 # variables
 $GitRepo = "https://github.com/mrjamiebowman/SampleDotNet-Powershell"
 $GitFolder = "SampleDotNet"
@@ -97,20 +100,28 @@ $FoundHostEntry1 = $false
 $FoundHostEntry2 = $false
 
 $HostsData | foreach {
-    #created named values
-    $_ -match "(?<IP>\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\s+(?<HOSTNAME>\S+)" | Out-Null
-    $ip=$matches.ip
-    $hostname=$matches.hostname
+    # regex for host entries
+    if ($_ -match "(?<IP>\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\s+(?<HOSTNAME>\S+)") {
+        $ip=$matches.ip
+        $hostname=$matches.hostname
 
-    if ($ip -eq "127.0.0.1" -and $hostname -eq $SiteHostname) {
-        Write-Host "Found Host Entry #1 - $ip - $hostname"
-        $FoundHostEntry1 = $true
+        if ($ip -eq "127.0.0.1" -and $hostname -eq $SiteHostname) {
+            Write-Host "Found Host Entry #1 - $ip - $hostname"
+            $FoundHostEntry1 = $true
+        }
     }
-    if ($ip -eq "::1" -and $hostname -eq $SiteHostname) {
-        Write-Host "Found Host Entry #2 - $ip - $hostname"
-        $FoundHostEntry2 = $true
+    
+    if ($_ -match "(?<IP>::1)\s+(?<HOSTNAME>\S+)") {
+        $ip2=$matches.ip
+        $hostname2=$matches.hostname
+
+        if ($ip2 -eq "::1" -and $hostname2 -eq $SiteHostname) {
+            Write-Host "Found Host Entry #2 - $ip2 - $hostname2"
+            $FoundHostEntry2 = $true
+        }
     }
 }
+
 
 # hosts
 Write-Host ""
@@ -151,6 +162,43 @@ Write-Host "Setting up IIS" -ForegroundColor Green
 Import-Module WebAdministration
 
 # iis: certificate
+Set-Location cert:\LocalMachine\My
+
+Get-ChildItem -Recurse 
+
+$cert = Get-ChildItem -Recurse | Where-Object {
+    $_.Subject -eq "CN=*.sampledotnet.com"
+}
+
+if ($cert -ne $null) {
+    Write-Host "Found Cert: CN=*.sampledotnet.com"
+} else {
+    # generate new ssl
+    $cert = New-SelfSignedCertificate -FriendlyName "localhost ($SiteHostname)" -DnsName $SiteHostname -CertStoreLocation cert:\LocalMachine\My
+
+    # copy cert into root    
+    $srcStoreScope = "LocalMachine"
+    $srcStoreName = "My"
+
+    $srcStore = New-Object System.Security.Cryptography.X509Certificates.X509Store $srcStoreName, $srcStoreScope
+    $srcStore.Open([System.Security.Cryptography.X509Certificates.OpenFlags]::ReadOnly)
+
+    $cert = $srcStore.certificates -match $SiteHostname
+
+    $dstStoreScope = "LocalMachine"
+    $dstStoreName = "root"
+
+    $dstStore = New-Object System.Security.Cryptography.X509Certificates.X509Store $dstStoreName, $dstStoreScope
+    $dstStore.Open([System.Security.Cryptography.X509Certificates.OpenFlags]::ReadWrite)
+    $dstStore.Add($cert[0])
+
+    $srcStore.Close
+    $dstStore.Close
+}
+
+# go back to root path
+Set-Location $RootPath
+
 
 # iis: app pool
 $CreateAppPool = $true
@@ -197,6 +245,19 @@ if ($CreateWebsite -eq $true) {
     Start-WebSite -Name $SiteName
 }
 
+# iis:  assign cert
+Write-Host "IIS: Assign Cert" -ForegroundColor Green
+
+if ($cert -ne $null) {
+    # get the web binding of the site
+    $binding = Get-WebBinding -Name $SiteName -Protocol "https"
+
+    # set the ssl certificate
+    $binding.AddSslCertificate($cert.GetCertHashString(), "My")
+} else {
+    Write-Host "Unable to assign cert."
+}
+
 # restart app pool
 Write-Host "Restarting app pool..."
 
@@ -227,9 +288,8 @@ if (Test-Path "$Path\$IISWebsiteFolder\packages.config") {
     Invoke-WebRequest $sourceNugetExe -OutFile $targetNugetExe
     Set-Alias nuget $targetNugetExe -Scope Global -Verbose
     
-    #Set-Location -Path $Path\$IISWebsiteFolder
+    Set-Location -Path $Path
     nuget restore
-    #Set-Location -Path $Path
 }
 
 # msbuild
